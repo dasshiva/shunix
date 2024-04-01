@@ -27,6 +27,19 @@
         exit(EXIT_FAILURE); \
     } while (0)
 
+struct sys_call {
+	long syscall;
+	long args[6];
+};
+
+void handle_syscall(struct sys_call* s) {
+	switch (s->syscall) {
+		case SYS_exit: exit(0); break;
+	        case -1: printf("Hello World"); break;
+		default: printf("Unimplented system call = %ld\n", s->syscall); exit(1);
+	}
+}
+
 int
 main(int argc, char **argv)
 {
@@ -50,6 +63,7 @@ main(int argc, char **argv)
     ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_EXITKILL);
 
     for (;;) {
+	struct sys_call sys;
         /* Enter next system call */
         if (ptrace(PTRACE_SYSCALL, pid, 0, 0) == -1)
             FATAL("%s", strerror(errno));
@@ -65,12 +79,15 @@ main(int argc, char **argv)
             FATAL("%s", strerror(errno));
 
 #ifdef __aarch64__
-        long syscall = regs.regs[8];
-        /* Print a representation of the system call */
-        fprintf(stderr, "%ld(%ld, %ld, %ld, %ld, %ld, %ld)",
+        sys.syscall = regs.regs[8];
+	memcpy(sys.args, regs.regs, 6);
+
+        /*fprintf(stderr, "%ld(%ld, %ld, %ld, %ld, %ld, %ld)",
                 syscall,
                 (long)regs.regs[0], (long)regs.regs[1], (long)regs.regs[2],
-                (long)regs.regs[3], (long)regs.regs[4],  (long)regs.regs[5]); 
+                (long)regs.regs[3], (long)regs.regs[4],  (long)regs.regs[5]);  */
+	regs.regs[8] = 1000;
+	ptrace(PTRACE_SETREGSET, pid, NT_PRSTATUS, &iov);
 
         /* Run system call and stop on exit */
         if (ptrace(PTRACE_SYSCALL, pid, 0, 0) == -1)
@@ -87,15 +104,22 @@ main(int argc, char **argv)
         } 
 
         /* Print system call result */
-        fprintf(stderr, " = %ld\n", (long)regs.regs[0]);
+        //fprintf(stderr, " = %ld\n", (long)regs.regs[0]);
 #else
-	long syscall = regs.orig_rax;
+	sys.syscall = regs.orig_rax;
+	/* As x86 has named registers we can no longer use memcpy() like above */
 
-        /* Print a representation of the system call */
-        fprintf(stderr, "%ld(%ld, %ld, %ld, %ld, %ld, %ld)",
+	sys.args[0] = regs.rdi;
+	sys.args[1] = regs.rsi;
+	sys.args[2] = regs.rdx;
+	sys.args[3] = regs.r10;
+	sys.args[4] = regs.r8;
+	sys.args[5] = regs.r9;
+
+        /*fprintf(stderr, "%ld(%ld, %ld, %ld, %ld, %ld, %ld)",
                 syscall,
                 (long)regs.rdi, (long)regs.rsi, (long)regs.rdx,
-                (long)regs.r10, (long)regs.r8,  (long)regs.r9);
+                (long)regs.r10, (long)regs.r8,  (long)regs.r9); */
 
 	regs.orig_rax = 1000;
 	ptrace(PTRACE_SETREGSET, pid, NT_PRSTATUS, &iov);
@@ -114,16 +138,9 @@ main(int argc, char **argv)
 	    }
 	   FATAL("%s", strerror(errno));
         }
-
-	if (syscall == 0x3C) {
-                kill(pid, SIGKILL);
-                exit(1);
-        }
-	if (syscall == -1) {
-		printf("Hello World");
-	}
         /* Print system call result */
-        fprintf(stderr, " = %ld\n", (long)regs.rax);
+        //fprintf(stderr, " = %ld\n", (long)regs.rax);
 #endif
+	handle_syscall(&sys);
     }
 }
