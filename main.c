@@ -82,10 +82,6 @@ main(int argc, char **argv)
         sys.syscall = regs.regs[8];
 	memcpy(sys.args, regs.regs, 6);
 
-        /*fprintf(stderr, "%ld(%ld, %ld, %ld, %ld, %ld, %ld)",
-                syscall,
-                (long)regs.regs[0], (long)regs.regs[1], (long)regs.regs[2],
-                (long)regs.regs[3], (long)regs.regs[4],  (long)regs.regs[5]);  */
 	regs.regs[8] = 1000;
 	ptrace(PTRACE_SETREGSET, pid, NT_PRSTATUS, &iov);
 
@@ -97,14 +93,8 @@ main(int argc, char **argv)
 
         /* Get system call result */
         if (ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &iov) == -1) {
-            fputs(" = ?\n", stderr);
-            if (errno == ESRCH)
-                exit(regs.regs[0]); // system call was _exit(2) or similar
             FATAL("%s", strerror(errno));
-        } 
-
-        /* Print system call result */
-        //fprintf(stderr, " = %ld\n", (long)regs.regs[0]);
+        }
 #else
 	sys.syscall = regs.orig_rax;
 	/* As x86 has named registers we can no longer use memcpy() like above */
@@ -115,11 +105,6 @@ main(int argc, char **argv)
 	sys.args[3] = regs.r10;
 	sys.args[4] = regs.r8;
 	sys.args[5] = regs.r9;
-
-        /*fprintf(stderr, "%ld(%ld, %ld, %ld, %ld, %ld, %ld)",
-                syscall,
-                (long)regs.rdi, (long)regs.rsi, (long)regs.rdx,
-                (long)regs.r10, (long)regs.r8,  (long)regs.r9); */
 
 	regs.orig_rax = 1000;
 	ptrace(PTRACE_SETREGSET, pid, NT_PRSTATUS, &iov);
@@ -132,14 +117,8 @@ main(int argc, char **argv)
 
         /* Get system call result */
         if (ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &iov) == -1) {
-            fputs(" = ?\n", stderr);
-            if (errno == ESRCH) {
-                exit(regs.rdi); // system call was _exit(2) or similar
-	    }
 	   FATAL("%s", strerror(errno));
         }
-        /* Print system call result */
-        //fprintf(stderr, " = %ld\n", (long)regs.rax);
 #endif
 	handle_syscall(&sys);
     }
